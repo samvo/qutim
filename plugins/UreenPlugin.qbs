@@ -1,5 +1,6 @@
 import qbs 1.0
 import qbs.FileInfo
+import qbs.File
 import qbs.TextFile
 
 Product {
@@ -57,7 +58,7 @@ Product {
     cpp.createSymlinks: false
 
     Depends { name: "cpp" }
-    Depends { name: "Qt"; submodules: [ "core", "gui", "network", "script", "widgets" ] }
+    Depends { name: "Qt"; submodules: [ "core", "gui", "network", "script", "widgets", "quick" ] }
     Depends { name: "libqutim" }
 
     Group {
@@ -85,6 +86,11 @@ Product {
         name: "Generic cpp template"
         fileTags: [ "pluginCppTemplate" ]
         files: [ templateFilePath ]
+    }
+    Group {
+        fileTags: "dummy"
+        name: "QML files [dummy]"
+        files: "qml/**"
     }
 
     Rule {

@@ -22,13 +22,16 @@ Project {
         "unreadmessageskeeper/unreadmessageskeeper.qbs",
         "weather/weather.qbs",
         "yandexnarod/yandexnarod.qbs",
-        "mobility/src/bearermanager/bearermanager.qbs",
+        "bearermanager/bearermanager.qbs",
         "urlpreview/urlpreview.qbs",
         "kineticpopups/kineticpopups.qbs",
         "linuxintegration/linuxintegration.qbs",
         "updater/updater.qbs",
         "mobility/src/multimediabackend/multimediabackend.qbs",
         "sdlsound/sdlsound.qbs",
-        "macintegration/macintegration.qbs"
+        "macintegration/macintegration.qbs",
+        "offtherecord/offtherecord.qbs",
+        "qmlchat/qmlchat.qbs",
+        "quickcontactlist/quickcontactlist.qbs"
     ]
 }

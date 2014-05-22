@@ -553,7 +553,15 @@ void ModuleManager::loadPlugins(const QStringList &additional_paths)
 							<< "ms, instance:" << instanceTime << "ms, init:" << initTime << "ms";
 #endif // QUTIM_TEST_PERFOMANCE
                     if (plugin->p->validate()) {
-                        plugin->p->info.data()->inited = 1;
+                        PluginInfo::Data *info = plugin->p->info.data();
+                        info->inited = 1;
+                        info->fileName = filename;
+                        QFileInfo fileInfo = info->fileName;
+                        QString baseName = fileInfo.baseName();
+                        if (baseName.startsWith(QStringLiteral("lib")))
+                            baseName.remove(0, 3);
+                        info->libraryName = baseName;
+
                         d->plugins.append(plugin);
                         d->extensions << plugin->avaiableExtensions();
 						foreach(ExtensionInfo info, plugin->avaiableExtensions())
@@ -849,6 +857,16 @@ void ModuleManager::initExtensions()
 
 void ModuleManager::onQuit()
 {
+	foreach (Protocol *p, Protocol::all()) {
+		foreach (Account *a, p->accounts()) {
+			Status status = a->status();
+			a->config().setValue("lastStatus", status);
+			status.setType(Status::Offline);
+			status.setChangeReason(Status::ByQuit);
+			a->setStatus(status);
+		}
+	}
+
 	Event("aboutToQuit").send();
     foreach(QPointer<Plugin> plugin, d->plugins) {
         if (!plugin.isNull() && plugin.data()->info().data()->loaded) {
