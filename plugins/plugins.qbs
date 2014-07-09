@@ -32,6 +32,8 @@ Project {
         "macintegration/macintegration.qbs",
         "offtherecord/offtherecord.qbs",
         "qmlchat/qmlchat.qbs",
-        "quickcontactlist/quickcontactlist.qbs"
+        "quickcontactlist/quickcontactlist.qbs",
+        "indicator/indicator.qbs",
+        "winintegration/winintegration.qbs"
     ]
 }

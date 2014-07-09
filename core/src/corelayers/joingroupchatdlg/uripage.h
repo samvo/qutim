@@ -2,7 +2,7 @@
 **
 ** qutIM - instant messenger
 **
-** Copyright © 2011 Ivan Vizir <define-true-false@yandex.com>
+** Copyright © 2011 Aleksey Sidorov <gorthauer87@yandex.ru>
 **
 *****************************************************************************
 **
@@ -23,32 +23,40 @@
 **
 ****************************************************************************/
 
-#ifndef OVERLAYICON_H
-#define OVERLAYICON_H
+#ifndef URIPAGE_H
+#define URIPAGE_H
 
-#include "global.h"
-#include <QObject>
+#include <QScrollArea>
+#include <QPointer>
+#include "groupchatpage.h"
+#include <qutim/dataforms.h>
 
-class QIcon;
-class QWidget;
-class QPixmap;
+class QVBoxLayout;
+class QCheckBox;
+class QLineEdit;
+namespace Core {
 
-class WTQTEXPORT OverlayIcon : public QObject
+class UriPage : public GroupChatPage
 {
-	QWidget *m_window;
-
+    Q_OBJECT
 public:
-	OverlayIcon(QWidget *, QObject *parent = 0);
-	static void set(QWidget *, const QIcon &);
-	static void set(QWidget *, const QPixmap &);
-	static void set(QWidget *, const QString &path);
-	static void clear(QWidget *);
-	void set(const QIcon &);
-	void set(const QPixmap &);
-	void set(const QString &path);
-	void clear();
-	void changeWindow(QWidget*);
+	explicit UriPage(QWidget *parent = 0);
+	void setUri(const QUrl &);
+	void setUri(const QString &uri);
+public slots:
+	void join();
+	void updateDataForm();
+protected:
+	void showEvent(QShowEvent *);
+signals:
+	void joined();
+private:
+	QPointer<qutim_sdk_0_3::AbstractDataForm> m_dataForm;
+	QAction *m_joinAction;
+	QString m_uri;
 };
 
-#endif // OVERLAYICON_H
+} // namespace Core
+
+#endif // URIPAGE_H
 

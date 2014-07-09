@@ -3,6 +3,7 @@
 ** qutIM - instant messenger
 **
 ** Copyright © 2011 Ruslan Nigmatullin <euroelessar@yandex.ru>
+** Copyright © 2014 Nicolay Izoderov <nico-izo@ya.ru>
 **
 *****************************************************************************
 **
@@ -44,6 +45,11 @@
 #include <qutim/datasettingsobject.h>
 #include <qutim/systemintegration.h>
 #include <QApplication>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QUrlQuery>
+#include <qutim/chatsession.h>
+#include <QTextDocument>
 
 namespace Jabber
 {
@@ -162,11 +168,14 @@ JProtocol::JProtocol() : d_ptr(new JProtocolPrivate(this))
 {
 	Q_ASSERT(!self);
 	self = this;
+
+	QDesktopServices::setUrlHandler("xmpp", this, "onUrlOpen");
 }
 
 JProtocol::~JProtocol()
 {
 	self = 0;
+	QDesktopServices::unsetUrlHandler("xmpp");
 }
 
 QList<Account *> JProtocol::accounts() const
@@ -573,6 +582,34 @@ void JProtocol::onAccountDestroyed(QObject *obj)
 {
 	JAccount *acc = reinterpret_cast<JAccount*>(obj);
 	d_ptr->accounts->remove(d_ptr->accounts->key(acc));
+}
+
+void JProtocol::onUrlOpen(const QUrl &url)
+{
+	qDebug() << "Handle url: " << url;
+
+	ServicePointer<QObject> joinGroupChatDlg = ServicePointer<QObject>("JoinGroupChat");
+	if(!joinGroupChatDlg)
+		return;
+
+	QUrlQuery q;
+	q.setQueryDelimiters('=', ';');
+	q.setQuery(url.query());
+
+	if(q.hasQueryItem("join"))
+	{
+		QMetaObject::invokeMethod(joinGroupChatDlg.data(), "onJoinGroupChatTriggered", Q_ARG(QString, url.path()));
+		return;
+	}
+
+	qDebug() << q.queryItems();
+	if(q.hasQueryItem("message") && q.hasQueryItem("body"))
+		foreach (ChatSession *session, ChatLayer::instance()->sessions())
+			if(session->isActive() && session->unit()->id().startsWith(url.path()))
+				session->getInputField()->setPlainText(q.queryItemValue("body"));
+
+	// TODO: "message" option
+
 }
 }
 
