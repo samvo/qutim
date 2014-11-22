@@ -28,12 +28,14 @@
 #include <qutim/protocol.h>
 #include <qutim/icon.h>
 #include <qutim/event.h>
+#include <qutim/accountmanager.h>
 
 #include <QCoreApplication>
 #include <QStringBuilder>
 #include <QQueue>
 #include <QtAlgorithms>
 #include <QtDebug>
+#include <QUrlQuery>
 
 using namespace qutim_sdk_0_3;
 
@@ -183,6 +185,20 @@ QVariant ContactListBaseModel::data(const QModelIndex &index, int role) const
 					return findNotificationIcon(notification);
 			}
 			return contact->status().icon();
+        case IconSourceRole: {
+            QString avatar = contact->avatar();
+
+            QUrlQuery query;
+            query.addQueryItem(QStringLiteral("name"), contact->status().icon().name());
+
+            QUrl url;
+            url.setScheme(QStringLiteral("image"));
+            url.setHost(QStringLiteral("avatar"));
+            url.setPath(avatar.isEmpty() ? QStringLiteral("/") : avatar);
+            url.setQuery(query);
+
+            return url.toString();
+        }
 		case ItemTypeRole:
 			return ContactType;
 		case StatusTextRole:

@@ -25,6 +25,7 @@
 #include "thememanager.h"
 #include "systeminfo.h"
 #include <QMultiMap>
+#include <QDebug>
 
 namespace qutim_sdk_0_3
 {
@@ -73,6 +74,14 @@ static inline QStringList listThemes(QDir shareDir, const QString &category)
 		return QStringList();
 }
 
+static QStringList convertToPaths(const QList<QDir> &dirs)
+{
+	QStringList paths;
+	for (const QDir &dir : dirs)
+		paths << dir.absolutePath();
+	return paths;
+}
+
 QStringList ThemeManager::list(const QString &category)
 {
 	QStringList theme_list;
@@ -82,7 +91,7 @@ QStringList ThemeManager::list(const QString &category)
 		theme_list << listThemes(dir, category);
 	foreach (const QDir &dir, data()->categoryPaths.values(category))
 		theme_list << listThemes(dir, category);
-	theme_list.removeDuplicates();
+    theme_list.removeDuplicates();
 	return theme_list;
 }
 

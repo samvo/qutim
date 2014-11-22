@@ -31,6 +31,7 @@
 #include <QTextCodec>
 #include <QWidget>
 #include <QTime>
+#include <QOpenGLContext>
 
 #include "src/widgets/modulemanagerimpl.h"
 
@@ -38,6 +39,8 @@
 Q_IMPORT_PLUGIN(qjpeg)
 Q_IMPORT_PLUGIN(qgif)
 #endif
+
+Q_GUI_EXPORT void qt_gl_set_global_share_context(QOpenGLContext *context);
 
 int main(int argc, char *argv[])
 {
@@ -47,6 +50,13 @@ int main(int argc, char *argv[])
         qsrand(rd());
     }
 	QApplication app(argc, argv);
+    QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+
+    QOpenGLContext context;
+    context.create();
+
+    qt_gl_set_global_share_context(&context);
+
 	Core::ModuleManagerImpl core;
 	Q_UNUSED(core);
 
