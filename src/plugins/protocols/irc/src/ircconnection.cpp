@@ -411,13 +411,13 @@ void IrcConnection::loadSettings()
 	}
 	cfg.endArray();
 	// User nickname
-	m_nicks = cfg.value("nicks").toStringList();
+	m_nicks = cfg.value("nicks", QStringList());
 	if (m_nick.isEmpty())
 		m_nick = m_nicks.value(0);
 	// User fullname.
-	m_fullName = cfg.value("fullName").toString();
-	m_nickPassword = cfg.value("nickPassword").toString();
-	m_codec = QTextCodec::codecForName(cfg.value("codec", "utf8").toLatin1());
+	m_fullName = cfg.value("fullName", QString());
+	m_nickPassword = cfg.value("nickPassword", QString());
+	m_codec = QTextCodec::codecForName(cfg.value("codec", "utf8").value().toLatin1());
 	if (!m_codec)
 		m_codec = QTextCodec::codecForName("utf8");
 	Q_ASSERT(m_codec);
@@ -430,6 +430,10 @@ void IrcConnection::loadSettings()
 
 void IrcConnection::tryConnectToNextServer()
 {
+	if (m_hostLookupId != 0) {
+		return;
+	}
+
 	Q_ASSERT(m_hostLookupId == 0);
 	QString error;
 	if (m_servers.isEmpty())
@@ -456,6 +460,7 @@ void IrcConnection::tryConnectToNextServer()
 			m_socket->setPeerVerifyMode(QSslSocket::VerifyPeer);
 		m_socket->connectToHostEncrypted(server.hostName, server.port);
 	} else {
+		qDebug() << "doing lookup host" << server.hostName;
 		m_hostLookupId = QHostInfo::lookupHost(server.hostName, this, SLOT(hostFound(QHostInfo)));
 	}
 }
@@ -463,11 +468,13 @@ void IrcConnection::tryConnectToNextServer()
 void IrcConnection::hostFound(const QHostInfo &host)
 {
 	m_hostLookupId = 0;
+
+	qDebug() << "Host found" << host.addresses();
 	if (!host.addresses().isEmpty()) {
 		IrcServer server = m_servers.at(m_currentServer);
 		m_socket->connectToHost(host.addresses().at(qrand() % host.addresses().size()), server.port);
 	} else {
-		tryConnectToNextServer();
+		QTimer::singleShot(0, this, SLOT(tryConnectToNextServer()));
 	}
 }
 

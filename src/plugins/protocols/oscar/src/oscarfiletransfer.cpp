@@ -1233,7 +1233,7 @@ void OscarFileTransferSettings::loadSettings(DataItem &item, Config cfg)
 	{
 		DataItem item("alwaysUseProxy",
 					  tr("Always use file transfer proxy"),
-					  cfg.value("alwaysUseProxy", false));
+					  cfg.value("alwaysUseProxy", false).value());
 		settings.addSubitem(item);
 	}
 	{
@@ -1249,7 +1249,7 @@ void OscarFileTransferSettings::loadSettings(DataItem &item, Config cfg)
 	{
 		// TODO: That item must have type QList<quint16>
 		QVariant def = QVariantList() << 7341 << 13117 << 21746;
-		QString ports = cfg.value("localPorts", def).toStringList().join(", ");
+		QString ports = cfg.value("localPorts", def).value().toStringList().join(", ");
 		DataItem item("localPorts", tr("Local ports"), ports);
 		item.setProperty("enabled", !allowAnyPort);
 		settings.addSubitem(item);

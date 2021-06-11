@@ -43,7 +43,7 @@ namespace qutim_sdk_0_3
 
 		static History *instance();
 
-		struct AccountInfo
+		struct LIBQUTIM_EXPORT AccountInfo
 		{
 			QString protocol;
 			QString account;
@@ -52,7 +52,7 @@ namespace qutim_sdk_0_3
 			bool operator <(const AccountInfo &other) const;
 		};
 
-		struct ContactInfo : AccountInfo
+		struct LIBQUTIM_EXPORT ContactInfo : AccountInfo
 		{
 			QString contact;
 
@@ -74,9 +74,6 @@ namespace qutim_sdk_0_3
 		MessageList readSync(const ChatUnit *unit, int max_num);
 
 		static ContactInfo info(const ChatUnit *unit);
-
-	public slots:
-		virtual void showHistory(const ChatUnit *unit) = 0;
 
 	protected:
 		History();

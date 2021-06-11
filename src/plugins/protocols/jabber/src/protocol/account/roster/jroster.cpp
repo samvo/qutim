@@ -43,6 +43,7 @@
 #include <qutim/debug.h>
 #include <qutim/rosterstorage.h>
 #include <QApplication>
+#include "jmessagehandler.h"
 #include <jreen/pgpencrypted.h>
 //Jreen
 #include <jreen/chatstate.h>
@@ -310,7 +311,7 @@ void JRoster::handleNewPresence(Jreen::Presence presence)
 void JRoster::handleSelfPresence(Jreen::Presence presence)
 {
 	Q_D(JRoster);
-	JContact * &contact = d->contacts[presence.from().full()];
+	JContact *contact = d->contacts[presence.from().full()];
 	bool contactCreated = false;
 	if (presence.subtype() == Jreen::Presence::Unavailable) {
 		bool hasSession = false;
@@ -322,12 +323,13 @@ void JRoster::handleSelfPresence(Jreen::Presence presence)
 		}
 		if (!hasSession) {
 			d->contacts.remove(presence.from().full());
-			delete contact;
+			contact->deleteLater();
 			contact = 0;
 		}
 	} else {
 		if (!contact) {
 			contact = new JAccountResource(d->account, presence.from().full(), presence.from().resource());
+			d->contacts[presence.from().full()] = contact;
 			contactCreated = true;
 		}
 		if (ChatSession *session = ChatLayer::get(contact, false))
@@ -371,6 +373,26 @@ void JRoster::onNewMessage(Jreen::Message message)
 	ChatUnit *chatUnit = 0;
 	ChatUnit *unitForSession = 0;
 	ChatUnit *muc = d->account->conferenceManager()->muc(message.from().bareJID());
+
+	// TODO HACK: do something with that
+	// session is NOT created, but we received invite
+	// invite can be only from MUC room due to xep-0045
+#define JI Jreen::MUCRoom::Invite
+	if (!muc && JI::isInvite(message)) {
+		muc = d->account->conferenceManager()->createMucSession(message.from().bareJID());
+		// we created session, so message will go to JMUCSession::onServiceMessage
+		message.setBody(tr("%1 invited you to the room %2 with reason (%3)")
+						.arg(JI::getFrom(message).full())
+						.arg(message.from().bareJID())
+						.arg(JI::getReason(message))
+						);
+
+		d->account->messageSessionManager()->handleMessage(message);
+		// no need to proceed
+		return;
+	}
+#undef JI
+
 	if (muc) {
 		JMUCSession *session = static_cast<JMUCSession*>(muc);
 		chatUnit = session->findParticipant(message.from().resource());

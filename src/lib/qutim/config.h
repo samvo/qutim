@@ -30,10 +30,13 @@
 #include <functional>
 #include <QVariant>
 #include <QSharedData>
-#include <QMetaTypeId>
+#include <QMap>
 
 namespace qutim_sdk_0_3
 {
+
+class Config;
+
 #ifndef Q_QDOC
 namespace Detail
 {
@@ -93,11 +96,141 @@ struct ConfigValueCaster<QFlags<T>>
 	}
 };
 
+class ConfigConnectionData;
+
+class LIBQUTIM_EXPORT ConfigConnection
+{
+public:
+	ConfigConnection();
+	ConfigConnection(const ConfigConnection &other);
+	~ConfigConnection();
+
+	ConfigConnection &operator =(const ConfigConnection &other);
+
+	qint64 onChange(const std::function<void (const QVariant &)> &callback);
+	void forget(qint64 listenerId);
+
+private:
+	friend class qutim_sdk_0_3::Config;
+	QExplicitlySharedDataPointer<ConfigConnectionData> m_data;
+};
+
+template <typename T>
+class ConfigValueData : public QSharedData
+{
+	Q_DISABLE_COPY(ConfigValueData)
+public:
+	typedef QExplicitlySharedDataPointer<ConfigValueData<T>> Ptr;
+
+	struct ConnectionInfo
+	{
+		QObject *guard;
+		std::function<void (const T &)> callback;
+		QMetaObject::Connection connection;
+	};
+
+	ConfigValueData(const T &value, const ConfigConnection &connection)
+		: QSharedData(), m_value(value), m_connection(connection)
+	{
+		m_listenerId = m_connection.onChange([this] (const QVariant &data) {
+			onChangeHandler(data);
+		});
+	}
+
+	void onChange(QObject *guard, const std::function<void (const T &)> &callback)
+	{
+		QMetaObject::Connection connection = QObject::connect(guard, &QObject::destroyed, [this, guard] () {
+			for (int i = m_connections.size() - 1; i > 0; --i) {
+				if (m_connections.at(i).guard == guard) {
+					m_connections.remove(i);
+				}
+			}
+		});
+		m_connections.append(ConnectionInfo{
+			guard,
+			callback,
+			connection,
+		});
+	}
+
+	void onChangeHandler(const QVariant &value)
+	{
+		typedef ConfigValueCaster<T> Caster;
+		m_value = Caster::fromVariant(value);
+
+		for (const auto &info : m_connections)
+			info.callback(m_value);
+	}
+
+	~ConfigValueData()
+	{
+		m_connection.forget(m_listenerId);
+		for (const auto &info : m_connections)
+			QObject::disconnect(info.connection);
+	}
+
+	T m_value;
+	ConfigConnection m_connection;
+	qint64 m_listenerId;
+	QVarLengthArray<ConnectionInfo, 2> m_connections;
+};
+
+template <typename T>
+struct ConfigValueDataCaster
+{
+	static typename ConfigValueData<T>::Ptr cast(const typename ConfigValueData<QVariant>::Ptr &other)
+	{
+		typedef Detail::ConfigValueCaster<T> Caster;
+		typedef Detail::ConfigValueData<T> Data;
+		typedef typename Detail::ConfigValueData<T>::Ptr DataPtr;
+
+		if (!other)
+			return DataPtr();
+
+		return DataPtr(new Data(Caster::fromVariant(other->m_value), other->m_connection));
+	}
+};
+
+template <>
+struct ConfigValueDataCaster<QVariant>
+{
+	static typename ConfigValueData<QVariant>::Ptr cast(const typename ConfigValueData<QVariant>::Ptr &other)
+	{
+		return other;
+	}
+};
+
 }
 #endif
+
+class Config;
 class ConfigPrivate;
 class ConfigBackend;
 class ConfigBackendPrivate;
+
+template <typename T>
+class ConfigValue
+{
+public:
+	ConfigValue();
+	ConfigValue(const ConfigValue &other);
+	~ConfigValue();
+
+	ConfigValue &operator =(const ConfigValue &other);
+
+	T value() const;
+	operator T() const;
+	T operator& (const T &) const;
+	T operator| (const T &) const;
+
+	void onChange(QObject *guard, const std::function<void (const T &)> &callback);
+
+private:
+	friend class Config;
+	ConfigValue(const typename Detail::ConfigValueData<T>::Ptr &data);
+
+	typename Detail::ConfigValueData<T>::Ptr m_data;
+};
 
 class LIBQUTIM_EXPORT Config
 {
@@ -136,12 +269,12 @@ public:
 
 	QVariant rootValue(const QVariant &def = QVariant(), ValueFlags type = Normal) const Q_REQUIRED_RESULT;
 	template<typename T>
-	T value(const QString &key, const T &def = T(), ValueFlags type = Normal) const Q_REQUIRED_RESULT;
-	QVariant value(const QString &key, const QVariant &def = QVariant(), ValueFlags type = Normal) const Q_REQUIRED_RESULT;
-	inline QString value(const QString &key, const QLatin1String &def, ValueFlags type = Normal) const Q_REQUIRED_RESULT;
-	inline QString value(const QString &key, const char *def, ValueFlags type = Normal) const Q_REQUIRED_RESULT;
+	ConfigValue<T> value(const QString &key, const T &def = T(), ValueFlags type = Normal) const Q_REQUIRED_RESULT;
+	ConfigValue<QVariant> value(const QString &key, const QVariant &def = QVariant(), ValueFlags type = Normal) const Q_REQUIRED_RESULT;
+	inline ConfigValue<QString> value(const QString &key, const QLatin1String &def, ValueFlags type = Normal) const Q_REQUIRED_RESULT;
+	inline ConfigValue<QString> value(const QString &key, const char *def, ValueFlags type = Normal) const Q_REQUIRED_RESULT;
 	template <int N>
-	QString value(const QString &key, const char (&def)[N], ValueFlags type = Normal) const Q_REQUIRED_RESULT;
+	ConfigValue<QString> value(const QString &key, const char (&def)[N], ValueFlags type = Normal) const Q_REQUIRED_RESULT;
 	template<typename T>
 	void setValue(const QString &key, const T &value, ValueFlags type = Normal);
 	void setValue(const QString &key, const QVariant &value, ValueFlags type = Normal);
@@ -151,8 +284,6 @@ public:
 	void setValue(const QString &key, const char (&value)[N], ValueFlags type = Normal);
 
 	void sync();
-
-	void listen(const QString &name, QObject *guard, const std::function<void (const QVariant &)> &callback);
 
 	typedef void (*SaveOperator)(QVariant &, const void *);
 	typedef void (*LoadOperator)(const QVariant &, void *);
@@ -207,11 +338,75 @@ private:
 	QScopedPointer<ConfigBackendPrivate> d_ptr;
 };
 
+template <typename T>
+Q_INLINE_TEMPLATE ConfigValue<T>::ConfigValue()
+{
+}
+
+template <typename T>
+Q_INLINE_TEMPLATE ConfigValue<T>::ConfigValue(const typename Detail::ConfigValueData<T>::Ptr &data) : m_data(data)
+{
+}
+
+template <typename T>
+Q_INLINE_TEMPLATE ConfigValue<T>::ConfigValue(const ConfigValue &other) : m_data(other.m_data)
+{
+}
+
+template <typename T>
+Q_INLINE_TEMPLATE ConfigValue<T>::~ConfigValue()
+{
+}
+
+template <typename T>
+Q_INLINE_TEMPLATE ConfigValue<T> &ConfigValue<T>::operator =(const ConfigValue &other)
+{
+	m_data = other.m_data;
+	return *this;
+}
+
+template <typename T>
+T ConfigValue<T>::value() const
+{
+	if (Q_UNLIKELY(!m_data)) {
+		qFatal("ConfigValue::value: m_data is null");
+	}
+	return m_data->m_value;
+}
+
+template <typename T>
+ConfigValue<T>::operator T() const
+{
+	return value();
+}
+
+template <typename T>
+T ConfigValue<T>::operator& (const T& val) const
+{
+	return value() & val;
+}
+
+template <typename T>
+T ConfigValue<T>::operator| (const T& val) const
+{
+	return value() | val;
+}
+
+template <typename T>
+Q_INLINE_TEMPLATE void ConfigValue<T>::onChange(QObject *guard, const std::function<void (const T &)> &callback)
+{
+	if (Q_UNLIKELY(!m_data)) {
+		qFatal("ConfigValue::onChange: m_data is null");
+	}
+	m_data->onChange(guard, callback);
+}
+
 template<typename T>
-Q_INLINE_TEMPLATE T Config::value(const QString &key, const T &def, Config::ValueFlags type) const
+Q_INLINE_TEMPLATE ConfigValue<T> Config::value(const QString &key, const T &def, Config::ValueFlags type) const
 {
 	typedef Detail::ConfigValueCaster<T> Caster;
-	return Caster::fromVariant(value(key, Caster::toVariant(def), type));
+	typedef Detail::ConfigValueDataCaster<T> DataCaster;
+	return ConfigValue<T>(DataCaster::cast(value(key, Caster::toVariant(def), type).m_data));
 }
 
 template<typename T>
@@ -220,18 +415,18 @@ Q_INLINE_TEMPLATE void Config::setValue(const QString &key, const T &value, Conf
 	setValue(key, Detail::ConfigValueCaster<T>::toVariant(value), type);
 }
 
-QString Config::value(const QString &key, const QLatin1String &def, ValueFlags type) const
+ConfigValue<QString> Config::value(const QString &key, const QLatin1String &def, ValueFlags type) const
 {
 	return value(key, QString(def), type);
 }
 
-QString Config::value(const QString &key, const char *def, ValueFlags type) const
+ConfigValue<QString> Config::value(const QString &key, const char *def, ValueFlags type) const
 {
 	return value(key, QString::fromUtf8(def), type);
 }
 
 template <int N>
-Q_INLINE_TEMPLATE QString Config::value(const QString &key, const char (&def)[N], ValueFlags type) const
+Q_INLINE_TEMPLATE ConfigValue<QString> Config::value(const QString &key, const char (&def)[N], ValueFlags type) const
 {
 	return value(key, QString::fromUtf8(def, N-1), type);
 }

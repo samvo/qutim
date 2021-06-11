@@ -57,6 +57,8 @@
 #include <QTimer>
 #include <QDialogButtonBox>
 
+#include <jreen/chatstate.h>
+
 using namespace Jreen;
 using namespace qutim_sdk_0_3;
 
@@ -86,6 +88,8 @@ public:
 	bool isError;
 	QDateTime lastMessage;
 	QString *thread;
+
+	bool slowmode = false;
 };
 
 void JMUCSessionPrivate::removeUser(JMUCSession *conference, JMUCUser *user)
@@ -248,6 +252,11 @@ void JMUCSession::ban(const QString &nick, const QString &reason)
 void JMUCSession::unban(const QString &jid, const QString &reason)
 {
 	d_func()->room->setAffiliation(JID(jid), MUCRoom::AffiliationNone, reason);
+}
+
+void JMUCSession::invite(const QString &jid, const QString &reason)
+{
+	d_func()->room->invite(jid, reason);
 }
 
 void JMUCSession::member(const QString &nick, const QString &reason)
@@ -507,6 +516,21 @@ void JMUCSession::onMessage(Jreen::Message msg, bool priv)
 		ChatSession *chatSession = ChatLayer::get(user, true);
 		chatSession->appendMessage(coreMsg);
 	} else {
+		ChatSession *chatSession = ChatLayer::get(this, true);
+
+		if (auto state = msg.payload<Jreen::ChatState>().data()) {
+			if (user && state->state() == Jreen::ChatState::Composing) {
+				user->setChatState(qutim_sdk_0_3::ChatUnit::ChatStateComposing);
+			} else if (user) {
+				// yes, there are anothers states, but now there is only composing event
+				// for others we don't have neither api, nor icons
+				user->setChatState(qutim_sdk_0_3::ChatUnit::ChatStateGone);
+			}
+		}
+
+		if (msg.body().isEmpty())
+			return;
+
 		d->lastMessage = QDateTime::currentDateTime();
 		qutim_sdk_0_3::Message coreMsg(msg.body());
 		coreMsg.setChatUnit(this);
@@ -514,7 +538,6 @@ void JMUCSession::onMessage(Jreen::Message msg, bool priv)
 		if (user)
 			coreMsg.setProperty("senderId", user->id());
 		coreMsg.setIncoming(msg.from().resource() != d->room->nick());
-		ChatSession *chatSession = ChatLayer::get(this, true);
 		DelayedDelivery::Ptr when = msg.when();
 		if (when) {
 			coreMsg.setProperty("history", true);
@@ -554,24 +577,25 @@ void JMUCSession::onServiceMessage(const Jreen::Message &msg)
 	if (captcha && captcha->form()) {
 		QString text = tr("Conference \"%1\" requires you to fill the captcha to enter the room")
 					   .arg(d->jid.bare());
-		delete d->captchaForm.data();
+		d->captchaForm.data()->deleteLater();
 		d->captchaForm = new QDialog;
 
 		QLabel *label = new QLabel(text, d->captchaForm);
 		JDataForm *form = new JDataForm(captcha->form(), msg.payloads<BitsOfBinary>(), d->captchaForm);
 		QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, d->captchaForm);
 
-		QVBoxLayout *layout = new QVBoxLayout(d->captchaForm);
+		QVBoxLayout *layout = new QVBoxLayout;
 		form->layout()->setMargin(0);
 		layout->addWidget(label);
 		layout->addWidget(form);
 		layout->addWidget(buttonBox);
 
+		d->captchaForm->setLayout(layout);
+
 		connect(buttonBox, &QDialogButtonBox::accepted, d->captchaForm.data(), &QDialog::accept);
 		connect(buttonBox, &QDialogButtonBox::rejected, d->captchaForm.data(), &QDialog::reject);
 
 		connect(d->captchaForm.data(), &QDialog::accepted, this, &JMUCSession::onCaptchaFilled);
-		connect(d->captchaForm.data(), &QDialog::accepted, this, &QObject::deleteLater);
 		connect(d->captchaForm.data(), &QDialog::rejected, this, &QObject::deleteLater);
 		connect(d->account->client(), &Client::disconnected, d->captchaForm.data(), &QObject::deleteLater);
 
@@ -582,6 +606,25 @@ void JMUCSession::onServiceMessage(const Jreen::Message &msg)
 		return;
 	ChatSession *chatSession = ChatLayer::get(this, true);
 	qutim_sdk_0_3::Message coreMsg(msg.body());
+
+	if (msg.subtype() == Jreen::Message::Error && msg.containsPayload<Jreen::Error>()) {
+		qDebug() << "Service message with error" << msg.error()->conditionText();
+		coreMsg.setText(msg.error()->text().isEmpty()
+						? msg.error()->conditionText() : msg.error()->text());
+
+		// FIXME TODO (nico-izo):
+		// it appears that some servers have stanza limit
+		// and with chatstates enabled we can overflood and get error.
+		// This way we entering low-chat-state-mode
+		// TODO: maybe pseudoservice message about entering slowmode?
+		if (msg.error()->condition() == Jreen::Error::ResourceConstraint) {
+			d->slowmode = true;
+			qDebug() << "Entering slowmode for mucsession" << d->jid;
+		}
+
+		coreMsg.setProperty("error", true); // maybe we should somehow style error messages?
+	}
+
 	coreMsg.setChatUnit(this);
 	coreMsg.setProperty("service",true);
 	coreMsg.setProperty("silent", true);
@@ -834,6 +877,35 @@ void JMUCSession::handleDeath(const QString &name)
 	d_func()->users.remove(name);
 }
 
+bool JMUCSession::event(QEvent *ev)
+{
+	Q_D(JMUCSession);
+
+	if (ev->type() == ChatStateEvent::eventType()) {
+		ChatStateEvent *chatEvent = static_cast<ChatStateEvent *>(ev);
+		Jreen::ChatState::State state = static_cast<Jreen::ChatState::State>(chatEvent->chatState());
+
+		// HACK: look in JMUCSession::onServiceMessage for more info
+		if (d->slowmode) // && state != Jreen::ChatState::Composing
+			return true;
+
+		if (state == Jreen::ChatState::Gone)
+			return true; // ChatState::Gone forbidden in MUC
+
+		Jreen::Message msg(Jreen::Message::Groupchat,
+						   d->jid);
+		msg.setID(d->account.data()->client()->getID());
+
+		msg.addExtension(new Jreen::ChatState(state));
+
+		if (isJoined())
+			d->account->messageSessionManager()->send(msg);
+		return true;
+	}
+
+	return Conference::event(ev);
+}
+
 void JMUCSession::onError(Jreen::Error::Ptr error)
 {
 	Q_D(JMUCSession);
@@ -881,13 +953,16 @@ void JMUCSession::onNickSelected(const QString &nick)
 void JMUCSession::onCaptchaFilled()
 {
 	Q_D(JMUCSession);
-	JDataForm *form = qobject_cast<JDataForm*>(sender());
+	JDataForm *form = sender()->findChild<JDataForm*>();
+	Q_ASSERT(form);
 	Client *client = d->account.data()->client();
 	Jreen::IQ iq(Jreen::IQ::Set, d->jid.bareJID());
 	Captcha::Ptr captcha = Captcha::Ptr::create();
 	captcha->setForm(form->getDataForm());
 	iq.addPayload(captcha);
 	client->send(iq);
+
+	sender()->deleteLater();
 }
 
 }

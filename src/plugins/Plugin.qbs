@@ -48,10 +48,12 @@ Product {
 
     type: [ 'dynamiclibrary', 'installed_content' ]
     //name: sourceDirectory
-    destinationDirectory: qutim_plugin_path
+    destinationDirectory: project.qutim_plugin_path
     cpp.defines: [ "QUTIM_PLUGIN_ID=" + pluginId, "QUTIM_PLUGIN_NAME=\"" + name + "\""]
     cpp.visibility: 'hidden'
-    cpp.installNamePrefix: "@rpath/plugins/"
+    // NOTE: sorry qbs < 1.5.0, I had no choice
+    //cpp.installNamePrefix: "@rpath/plugins/"
+    cpp.sonamePrefix: "@rpath/plugins/"
     cpp.rpaths: qbs.targetOS.contains("osx")
                 ? ["@loader_path/../..", "@executable_path/.."]
                 : ["$ORIGIN", "$ORIGIN/..", "$ORIGIN/../.."]
@@ -64,34 +66,36 @@ Product {
     Group {
         fileTagsFilter: product.type
         qbs.install: true
-        qbs.installDir: qutim_plugin_path
+        qbs.installDir: project.qutim_plugin_path
     }
     Group {
         name: "Source"
-        prefix: (sourcePath !== '' ? sourcePath + '/' : '') + '**/'
+        prefix: product.sourceDirectory + '/' + (sourcePath !== '' ? sourcePath + '/' : '') + '**/'
+        excludeFiles: templateFilePath
         files: [ '*.cpp', '*.h', '*.ui', "*.c" ]
     }
     Group {
         name: "ObjectiveC sources [osx]"
         condition: qbs.targetOS.contains("osx")
-        prefix: (sourcePath !== '' ? sourcePath + '/' : '') + '**/'
+        prefix: product.sourceDirectory + '/' + (sourcePath !== '' ? sourcePath + '/' : '') + '**/'
         files: [ '*.mm' ]
     }
     Group {
         name: "Meta information"
         fileTags: [ "pluginTemplate" ]
         files: '*.plugin.json'
+        prefix: product.sourceDirectory + '/'
     }
     Group {
         name: "Generic cpp template"
         fileTags: [ "pluginCppTemplate" ]
         files: [ templateFilePath ]
     }
-    Group {
-        fileTags: "dummy"
-        name: "QML files [dummy]"
-        files: "qml/**"
-    }
+//    Group {
+//        fileTags: "dummy"
+//        name: "QML files [dummy]"
+//        files: "qml"
+//    }
 
     Rule {
         inputs: ["pluginTemplate"]

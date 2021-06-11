@@ -9,6 +9,16 @@ Project {
     property string qutim_version_patch: '0'
     property string qutim_version: qutim_version_major + '.' + qutim_version_minor + '.' + qutim_version_release + '.' + qutim_version_patch
     property bool declarativeUi: false
+    /**
+     * Use: just pass project.addressSanitizer:true as qbs resolve/build parameter
+     */
+    property bool addressSanitizer: false
+
+    /**
+     * Property to disable rpaths entirely (useful for linux distros like Fedora)
+     */
+    property bool useRPaths: true
+
     property var additionalCppDefines: []
 
     property string shareDir: qutim_share_path
@@ -38,6 +48,11 @@ Project {
         else
             return "share";
     }
+
+    /**
+     * For installing qutim icons in /usr/share/icons
+     */
+    property string qutim_system_share_path: "share"
     
     property string bin_path: qutim_bin_path
     property string lib_path: qutim_libexec_path
